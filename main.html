@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Meet</title>
+    <script defer src="dist/bundle.js"></script>
+    <style>
+        h3 {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div style="display: flex; justify-content: space-evenly">
+    <div style="border-style: dashed">
+        <h3>You</h3>
+        <video id="webcamVideo" autoplay="" playsinline="" style="
+    width: 300px;
+    height: 150px;
+"></video>
+        <button id="webcamButton" style="display: block;margin: auto">Start webcam</button>
+    </div>
+    <div style="border-style: dashed">
+        <h3>Friend</h3>
+        <video id="remoteVideo" autoplay="" playsinline="" style="
+    width: 300px;
+    height: 150px;
+"></video>    </div>
+</div>
+<div style="display: flex;justify-content: space-evenly;margin-top: 20px" id="options">
+    <div>
+        <button id="callButton" disabled>Create Call (offer)</button>
+    </div>
+
+    <div id="answer">
+        <input id="callInput" />
+        <button id="answerButton" disabled>Answer</button>
+    </div>
+
+    <div>
+        <button id="hangupButton" disabled>Hangup</button>
+    </div>
+
+</div>
+<div id="meet" style="display: none">
+    <H4 id="meet-id" style="text-align: center">Meet ID: </H4>
+    <span id="meet-id-status" style="display:block;text-align: center"></span>
+</div>
+</body>
+</html>
