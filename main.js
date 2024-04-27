@@ -292,3 +292,38 @@ answerButton.onclick = async () => {
     await joinMeet()
 }
 
+// Assume we have an RTCPeerConnection instance called peerConnection
+
+// Function to check the connection state
+function checkConnectionState(pc) {
+    pc.getStats(null).then(stats => {
+        let connected = false;
+
+        stats.forEach(report => {
+            // Check the candidate pair report for a successful connection
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                connected = true;
+            }
+        });
+
+        if (!connected) {
+            // Handle the disconnection
+            handleDisconnection();
+        }
+    });
+}
+
+// Function to handle the disconnection
+function handleDisconnection(pc) {
+    // Close the peer connection
+    pc.close();
+
+    // Remove media elements or perform other cleanup
+
+    // Optionally, try to re-establish the connection
+}
+
+// Set an interval to poll the connection state every 5 seconds
+setInterval(checkConnectionState, 5000);
+
+
