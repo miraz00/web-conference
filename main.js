@@ -14,11 +14,6 @@ const firebaseConfig = {
     measurementId: "G-ZZEBFDFQFP"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-let userStream
-
 const servers = {
     iceServers: [
         {
@@ -28,36 +23,34 @@ const servers = {
     iceCandidatePoolSize: 10,
 };
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+let userStream
 
 let docID
 
+/**
+ * creates a new document in firebase, creates "users" subcollection and a document is added as "user-1"(the host) in "users".
+ * "offercandidates" and "answercandidates" subcollections are added in "user-1"
+ * when the host generates it's icecandidates, they are added to "offercandidates"
+ * the "offer" of the host is added to "user-1" document
+ * the host waits for an "answer" from a peer by listening to the "user-1" document
+ * after getting an answer, the icecandidates of the remote peer is added to the peer connection  from "answercandidates"
+  */
 async function hostMeet() {
     const callDoc = getDOC();
     const userDoc = await addUserSubDocument(callDoc)
     const offerCandidates = collection(userDoc, 'offerCandidates');
     const answerCandidates = collection(userDoc, 'answerCandidates');
-    let pc = new RTCPeerConnection(servers)
 
-    pc.onicecandidate = (event) => {
-        event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
-    };
-
-    userStream.getTracks().forEach((track) => {
-        pc.addTrack(track, userStream);
-    });
-
-    let offerDescription = await pc.createOffer();
-    await pc.setLocalDescription(offerDescription);
-
-    const offer = {
-        sdp: offerDescription.sdp,
-        type: offerDescription.type,
-    };
-
-    await setDoc(userDoc, {offer});
+    let pc = await createPeerConnection(userDoc, offerCandidates)
 
     onSnapshot(userDoc, async (snapshot) => {
         const data = snapshot.data();
+        // if there is an answer from a new user
+        //!pc.currentRemoteDescription used so that when a new answer is added, the already established peer connections shouldn't take any action
+        //only the new peer connection should take the action to establish the connection
         if (!pc.currentRemoteDescription && data?.answer) {
             let remoteStream = new MediaStream()
             addRemoteVideo(remoteStream)
@@ -85,7 +78,11 @@ async function hostMeet() {
         }
     });
 
-    // replace with new offer for new peer to connect
+    /**
+     * after the host connects with a peer, the host will delete his current offer and icecandidates to generate a new one for a new connection
+     * the host also deletes the existing answer and the icecanidates of the established connection
+     * then waits for answer and icecandidates from a new user(defined above on "onsnapshot" method)
+     */
     async function newOffer() {
         await updateDoc(userDoc, {offer: deleteField()});
         const offerCandidatesSnapshot = await getDocs(offerCandidates);
@@ -93,42 +90,40 @@ async function hostMeet() {
             deleteDoc(offerCandidateDoc.ref);
         });
 
-        pc = new RTCPeerConnection(servers);
-        pc.onicecandidate = (event) => {
-            event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
-        };
-
-        userStream.getTracks().forEach((track) => {
-            pc.addTrack(track, userStream);
+        await updateDoc(userDoc, {answer: deleteField()});
+        const answerCandidatesSnapshot = await getDocs(answerCandidates);
+        answerCandidatesSnapshot.forEach(answerCandidateDoc => {
+            deleteDoc(answerCandidateDoc.ref);
         });
 
-        offerDescription = await pc.createOffer();
-        await pc.setLocalDescription(offerDescription);
-
-        const offer = {
-            sdp: offerDescription.sdp,
-            type: offerDescription.type,
-        };
-
-        await setDoc(userDoc, {offer});
+        pc = await createPeerConnection(userDoc, offerCandidates)
     }
 }
 
+/**
+ * the guest joins the meet with the document id then refers to "users" collection where he will find the users that are on the meeting
+ * with the names user-1(host), user-2 etc.....
+ * with each user he will establish a peer connection
+ * then he will call the hostMeet function to create a document for him "user-x" and proceeds in the way of how the host behaves
+ * so that future arriving users can connect with him
+ * the only difference being the call document already exist created by the original host
+ */
 async function joinMeet() {
-// Reference to the 'calls' collection and the specific call document
-    const callDocRef = getDOC()
+    // Reference to the 'calls' collection and the specific call document
+    const callDoc = getDOC()
 
-// Reference to the 'users' subcollection
-    const usersCollectionRef = collection(callDocRef, 'users');
+    // Reference to the 'users' subcollection
+    const users = collection(callDoc, 'users');
 
-// Function to handle the offer and answer process for each user
-    async function handleOfferAndAnswerForUser(userDocRef) {
+    // Function to handle the offer and answer process for each user
+    async function handleOfferAndAnswerForUser(userDoc) {
         const pc = new RTCPeerConnection(servers)
-
+        const offerCandidates = collection(userDoc, 'offerCandidates');
+        const answerCandidates = collection(userDoc, 'answerCandidates');
 
         pc.onicecandidate = event => {
             if (event.candidate) {
-                addDoc(answerCandidatesCollectionRef, event.candidate.toJSON());
+                addDoc(answerCandidates, event.candidate.toJSON());
             }
         };
 
@@ -144,22 +139,15 @@ async function joinMeet() {
             });
         };
 
-        const userDocSnapshot = await getDoc(userDocRef);
+        const userDocSnapshot = await getDoc(userDoc);
         const offer = userDocSnapshot.data().offer;
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
-        const offerCandidatesCollectionRef = collection(userDocRef, 'offerCandidates');
-        const offerCandidatesSnapshot = await getDocs(offerCandidatesCollectionRef);
+        
+        const offerCandidatesSnapshot = await getDocs(offerCandidates);
         offerCandidatesSnapshot.forEach(offerCandidateDoc => {
             const candidate = new RTCIceCandidate(offerCandidateDoc.data());
             pc.addIceCandidate(candidate);
-        });
-
-        await updateDoc(userDocRef, { answer: deleteField() });
-        const answerCandidatesCollectionRef = collection(userDocRef, 'answerCandidates');
-        const answerCandidatesSnapshot = await getDocs(answerCandidatesCollectionRef);
-        answerCandidatesSnapshot.forEach(answerCandidateDoc => {
-            deleteDoc(answerCandidateDoc.ref);
         });
 
         const answerDescription = await pc.createAnswer();
@@ -169,11 +157,11 @@ async function joinMeet() {
         };
         await pc.setLocalDescription(new RTCSessionDescription(answerDescription));
 
-        await updateDoc(userDocRef, {answer});
+        await updateDoc(userDoc, {answer});
     }
 
-// Iterate over each user in the call
-    getDocs(usersCollectionRef).then(usersSnapshot => {
+    // Iterate over each user in the call
+    getDocs(users).then(usersSnapshot => {
         usersSnapshot.forEach(userDoc => {
             handleOfferAndAnswerForUser(userDoc.ref);
         });
@@ -182,6 +170,60 @@ async function joinMeet() {
     });
 
     await hostMeet()
+
+}
+
+async function createPeerConnection(userDoc, offerCandidates) {
+    let pc = new RTCPeerConnection(servers)
+
+    pc.onicecandidate = (event) => {
+        event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
+    };
+
+    userStream.getTracks().forEach((track) => {
+        pc.addTrack(track, userStream);
+    });
+
+    let offerDescription = await pc.createOffer();
+    await pc.setLocalDescription(offerDescription);
+
+    const offer = {
+        sdp: offerDescription.sdp,
+        type: offerDescription.type,
+    };
+    await setDoc(userDoc, {offer});
+    // Set an interval to poll the connection state every 5 seconds
+    // setInterval(checkConnectionState, 5000);
+    return pc
+}
+// Assume we have an RTCPeerConnection instance called peerConnection
+
+// Function to check the connection state
+function checkConnectionState(pc) {
+    pc.getStats(null).then(stats => {
+        let connected = false;
+
+        stats.forEach(report => {
+            // Check the candidate pair report for a successful connection
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                connected = true;
+            }
+        });
+
+        if (!connected) {
+            // Handle the disconnection
+            handleDisconnection();
+        }
+    });
+}
+
+// Function to handle the disconnection
+function handleDisconnection(pc, mediaElement) {
+    // Close the peer connection
+    pc.close();
+
+    // Remove media elements or perform other cleanup
+    mediaElement.remove()
 
 }
 
@@ -291,39 +333,5 @@ answerButton.onclick = async () => {
     optionsDiv.style.justifyContent = "center"
     await joinMeet()
 }
-
-// Assume we have an RTCPeerConnection instance called peerConnection
-
-// Function to check the connection state
-function checkConnectionState(pc) {
-    pc.getStats(null).then(stats => {
-        let connected = false;
-
-        stats.forEach(report => {
-            // Check the candidate pair report for a successful connection
-            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                connected = true;
-            }
-        });
-
-        if (!connected) {
-            // Handle the disconnection
-            handleDisconnection();
-        }
-    });
-}
-
-// Function to handle the disconnection
-function handleDisconnection(pc) {
-    // Close the peer connection
-    pc.close();
-
-    // Remove media elements or perform other cleanup
-
-    // Optionally, try to re-establish the connection
-}
-
-// Set an interval to poll the connection state every 5 seconds
-setInterval(checkConnectionState, 5000);
 
 
