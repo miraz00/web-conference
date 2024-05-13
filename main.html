@@ -8,11 +8,21 @@
         <link rel="stylesheet" href="main.css">
     </head>
     <body>
+        <div id="name-div">
+            <label for="name">
+                Name:
+            </label>
+            <input type="text" id="name">
+            <button id="nameButton">Apply</button>
+        </div>
         <div id="video-container">
             <div class="video-container-div">
-                <h3>You</h3>
+                <h3>You<span class="user"></span></h3>
                 <video id="webcamVideo" autoplay="" playsinline="" muted="muted"></video>
-                <button id="webcamButton">Start webcam</button>
+                <div style="display:flex; justify-content: space-around; margin-bottom: 10px;">
+                    <button id="webcamButton">Start webcam</button>
+                    <button id="screenShareButton">Share Screen</button>
+                </div>
             </div>
 
         </div>
