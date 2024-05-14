@@ -400,6 +400,7 @@ function manageConnection(pc) {
     manageRemoteName(pc)
     endConnection(pc)
     manageChat(pc)
+    manageFile(pc)
 
     pc.onconnectionstatechange = ((event)=>{
         switch(pc.connectionState) {
@@ -540,47 +541,6 @@ function handleClosed(pc) {
     }
 }
 
-function manageChat(pc) {
-    const chatChannel = pc.createDataChannel("chat", {
-        negotiated: true,
-        id: 4
-    });
-
-    chatChannel.onopen = (()=>{
-        pc.chatChannel = chatChannel
-        document.getElementById('sendMessage').addEventListener('click', (event) => {
-            const textBox = document.querySelector('.text-box');
-            const message = textBox.innerText;
-
-            if (message) {
-                // Create a new <li> for self-sent message
-                const selfMessageLi = document.createElement('li');
-                selfMessageLi.classList.add('self');
-                selfMessageLi.textContent = message;
-                document.getElementById('messages').appendChild(selfMessageLi);
-
-                // Send the message to all connected peers
-                for (const key in remoteConnectedPeers) {
-                    // Ensure that the chatChannel exists before sending
-                    if (remoteConnectedPeers[key].chatChannel) {
-                        remoteConnectedPeers[key].chatChannel.send(message);
-                    }
-                }
-
-                // Clear the text box's innerText
-                textBox.innerText = '';
-            }
-        })
-    })
-
-    chatChannel.onmessage = ((event) => {
-        const receivedMessage = event.data;
-        const otherMessageLi = document.createElement('li');
-        otherMessageLi.classList.add('other');
-        otherMessageLi.textContent = `${pc.remoteName}: ${receivedMessage}`
-        document.getElementById('messages').appendChild(otherMessageLi);
-    })
-}
 // -------------------------     utilities      -----------------------------------
 
 function addVideo(stream, user = false, screen = false, pc) {
@@ -730,8 +690,8 @@ document.getElementById("hangupButton").onclick = ((event)=>{
 
 // ---------------------- chat ------------------------------------
 
-var element = $('.floating-chat');
-var myStorage = localStorage;
+let element = $('.floating-chat');
+let myStorage = localStorage;
 
 if (!myStorage.getItem('chatID')) {
     myStorage.setItem('chatID', createUUID());
@@ -744,12 +704,12 @@ setTimeout(function() {
 element.click(openElement);
 
 function openElement() {
-    var messages = element.find('.messages');
-    var textInput = element.find('.text-box');
+    let messages = element.find('.messages');
+    let textInput = element.find('.text-box');
     element.find('>i').hide();
     element.addClass('expand');
     element.find('.chat').addClass('enter');
-    var strLength = textInput.val().length * 2;
+    let strLength = textInput.val().length * 2;
     textInput.keydown(onMetaAndEnter).prop("disabled", false).focus();
     element.off('click', openElement);
     element.find('.header button').click(closeElement);
@@ -772,26 +732,26 @@ function closeElement() {
 
 function createUUID() {
     // http://www.ietf.org/rfc/rfc4122.txt
-    var s = [];
-    var hexDigits = "0123456789abcdef";
-    for (var i = 0; i < 36; i++) {
+    let s = [];
+    let hexDigits = "0123456789abcdef";
+    for (let i = 0; i < 36; i++) {
         s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
     }
     s[14] = "4"; // bits 12-15 of the time_hi_and_version field to 0010
     s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1); // bits 6-7 of the clock_seq_hi_and_reserved to 01
     s[8] = s[13] = s[18] = s[23] = "-";
 
-    var uuid = s.join("");
+    let uuid = s.join("");
     return uuid;
 }
 
 function sendNewMessage() {
-    var userInput = $('.text-box');
-    var newMessage = userInput.html().replace(/\<div\>|\<br.*?\>/ig, '\n').replace(/\<\/div\>/g, '').trim().replace(/\n/g, '<br>');
+    let userInput = $('.text-box');
+    let newMessage = userInput.html().replace(/\<div\>|\<br.*?\>/ig, '\n').replace(/\<\/div\>/g, '').trim().replace(/\n/g, '<br>');
 
     if (!newMessage) return;
 
-    var messagesContainer = $('.messages');
+    let messagesContainer = $('.messages');
 
     messagesContainer.append([
         '<li class="self">',
@@ -813,4 +773,250 @@ function onMetaAndEnter(event) {
     if ((event.metaKey || event.ctrlKey) && event.keyCode == 13) {
         sendNewMessage();
     }
+}
+
+
+function manageChat(pc) {
+    const chatChannel = pc.createDataChannel("chat", {
+        negotiated: true,
+        id: 4
+    });
+
+    chatChannel.onopen = (()=>{
+        pc.chatChannel = chatChannel
+        document.getElementById('sendMessage').addEventListener('click', (event) => {
+            const textBox = document.querySelector('.text-box');
+            const message = textBox.innerText;
+
+            if (message) {
+                // Create a new <li> for self-sent message
+                const selfMessageLi = document.createElement('li');
+                selfMessageLi.classList.add('self');
+                selfMessageLi.textContent = message;
+                document.getElementById('messages').appendChild(selfMessageLi);
+
+                // Send the message to all connected peers
+                for (const key in remoteConnectedPeers) {
+                    // Ensure that the chatChannel exists before sending
+                    if (remoteConnectedPeers[key].chatChannel) {
+                        remoteConnectedPeers[key].chatChannel.send(message);
+                    }
+                }
+
+                // Clear the text box's innerText
+                textBox.innerText = '';
+            }
+        })
+    })
+
+    chatChannel.onmessage = ((event) => {
+        const receivedMessage = event.data;
+        const otherMessageLi = document.createElement('li');
+        otherMessageLi.classList.add('other');
+        otherMessageLi.textContent = `${pc.remoteName}: ${receivedMessage}`
+        document.getElementById('messages').appendChild(otherMessageLi);
+    })
+}
+// ------------- file transfer ----------------
+let fileReader;
+const bitrateDiv = document.querySelector('div#bitrate');
+const fileInput = document.querySelector('input#fileInput');
+const abortButton = document.querySelector('button#abortButton');
+const downloadAnchor = document.querySelector('a#download');
+const sendProgress = document.querySelector('progress#sendProgress');
+const receiveProgress = document.querySelector('progress#receiveProgress');
+const statusMessage = document.querySelector('span#status');
+const sendFileButton = document.querySelector('button#sendFile');
+
+let receiveBuffer = [];
+let receivedSize = 0;
+
+let bytesPrev = 0;
+let timestampPrev = 0;
+let timestampStart;
+let statsInterval = null;
+let bitrateMax = 0;
+
+sendFileButton.addEventListener('click', () => sendFile());
+fileInput.addEventListener('change', handleFileInputChange, false);
+abortButton.addEventListener('click', () => {
+    if (fileReader && fileReader.readyState === 1) {
+        //console.log('Abort read!');
+        fileReader.abort();
+    }
+});
+
+async function handleFileInputChange() {
+    const file = fileInput.files[0];
+    if (!file) {
+        //console.log('No file chosen');
+    } else {
+        sendFileButton.disabled = false;
+    }
+}
+
+function sendFile() {
+    abortButton.disabled = false;
+    sendFileButton.disabled = true;
+    fileInput.disabled = true;
+
+    // Send the message to all connected peers
+    for (const key in remoteConnectedPeers) {
+        // Ensure that the chatChannel exists before sending
+        if (remoteConnectedPeers[key].fileChannel) {
+            sendData(remoteConnectedPeers[key].fileChannel)
+        }
+    }
+}
+
+function sendMetadata(sendChannel, file) {
+    const metadata = JSON.stringify({
+        'fileName': file.name,
+        'fileSize': file.size,
+        'fileType': file.type
+    });
+    sendChannel.send(metadata);
+}
+
+function sendData(sendChannel) {
+    const file = fileInput.files[0];
+    sendMetadata(sendChannel, file);
+    //console.log(`File is ${[file.name, file.size, file.type, file.lastModified].join(' ')}`);
+
+    // Handle 0 size files.
+    statusMessage.textContent = '';
+    downloadAnchor.textContent = '';
+    if (file.size === 0) {
+        bitrateDiv.innerHTML = '';
+        statusMessage.textContent = 'File is empty, please select a non-empty file';
+        handleZeroSize();
+        return;
+    }
+    sendProgress.max = file.size;
+    receiveProgress.max = file.size;
+    const chunkSize = 16384;
+    const fileReader = new FileReader();
+    let offset = 0;
+    fileReader.addEventListener('error', error => console.error('Error reading file:', error));
+    fileReader.addEventListener('abort', event => console.log('File reading aborted:', event));
+    fileReader.addEventListener('load', e => {
+        //console.log('FileRead.onload ', e);
+        sendChannel.send(e.target.result);
+        offset += e.target.result.byteLength;
+        sendProgress.value = offset;
+        if (offset < file.size) {
+            readSlice(offset);
+        }
+    });
+    const readSlice = o => {
+        //console.log('readSlice ', o);
+        const slice = file.slice(offset, o + chunkSize);
+        fileReader.readAsArrayBuffer(slice);
+    };
+    readSlice(0);
+}
+
+function handleZeroSize() {
+    // re-enable the file select
+    fileInput.disabled = false;
+    abortButton.disabled = true;
+    sendFileButton.disabled = false;
+}
+
+let fileMetadata = null;
+async function onReceiveMessageCallback(event, pc) {
+    if (!fileMetadata) {
+        // The first message should be the metadata
+        fileMetadata = JSON.parse(event.data);
+        // Set up the receive progress max value
+        receiveProgress.max = fileMetadata.fileSize;
+
+        timestampStart = (new Date()).getTime();
+        timestampPrev = timestampStart;
+        statsInterval = setInterval(displayStats, 500);
+        await displayStats(pc);
+
+        receivedSize = 0;
+        bitrateMax = 0;
+        downloadAnchor.textContent = '';
+        downloadAnchor.removeAttribute('download');
+        if (downloadAnchor.href) {
+            URL.revokeObjectURL(downloadAnchor.href);
+            downloadAnchor.removeAttribute('href');
+        }
+
+        // Now wait for the file data messages
+        return;
+    }
+    //console.log(`Received Message ${event.data.byteLength}`);
+    receiveBuffer.push(event.data);
+    receivedSize += event.data.byteLength;
+    receiveProgress.value = receivedSize;
+
+    // we are assuming that our signaling protocol told
+    // about the expected file size (and name, hash, etc).
+    //const file = fileInput.files[0];
+    if (receivedSize === fileMetadata.fileSize) {
+        console.log("the size has become equal")
+        const received = new Blob(receiveBuffer);
+        receiveBuffer = [];
+
+        downloadAnchor.href = URL.createObjectURL(received);
+        downloadAnchor.download = fileMetadata.fileName;
+        downloadAnchor.textContent =
+            `Click to download '${fileMetadata.fileName}' (${fileMetadata.fileSize} bytes)`;
+        downloadAnchor.style.display = 'block';
+
+        const bitrate = Math.round(receivedSize * 8 /
+            ((new Date()).getTime() - timestampStart));
+        bitrateDiv.innerHTML =
+            `<strong>Average Bitrate:</strong> ${bitrate} kbits/sec (max: ${bitrateMax} kbits/sec)`;
+        fileMetadata = null
+        if (statsInterval) {
+            clearInterval(statsInterval);
+            statsInterval = null;
+        }
+    }
+}
+
+// display bitrate statistics.
+async function displayStats(pc) {
+    if (pc && pc.iceConnectionState === 'connected') {
+        const stats = await pc.getStats();
+        let activeCandidatePair;
+        stats.forEach(report => {
+            if (report.type === 'transport') {
+                activeCandidatePair = stats.get(report.selectedCandidatePairId);
+            }
+        });
+        if (activeCandidatePair) {
+            if (timestampPrev === activeCandidatePair.timestamp) {
+                return;
+            }
+            // calculate current bitrate
+            const bytesNow = activeCandidatePair.bytesReceived;
+            const bitrate = Math.round((bytesNow - bytesPrev) * 8 /
+                (activeCandidatePair.timestamp - timestampPrev));
+            bitrateDiv.innerHTML = `<strong>Current Bitrate:</strong> ${bitrate} kbits/sec`;
+            timestampPrev = activeCandidatePair.timestamp;
+            bytesPrev = bytesNow;
+            if (bitrate > bitrateMax) {
+                bitrateMax = bitrate;
+            }
+        }
+    }
+}
+
+function manageFile(pc) {
+    const fileChannel = pc.createDataChannel("file", {
+        negotiated: true,
+        id: 5
+    });
+    fileChannel.binaryType = 'arraybuffer'
+
+    fileChannel.onopen = (() => {
+        pc.fileChannel = fileChannel
+    })
+
+    fileChannel.onmessage = (event) => onReceiveMessageCallback(event, pc);
 }
