@@ -5,7 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Meet</title>
         <script defer src="dist/bundle.js"></script>
+        <script src="https://code.jquery.com/jquery-3.7.1.js" integrity="sha256-eKhayi8LEQwp4NKxN+CfCh+3qOVUtJn3QNZ0TciWLP4=" crossorigin="anonymous"></script>
         <link rel="stylesheet" href="main.css">
+        <link rel="stylesheet" href="chat.css">
     </head>
     <body>
         <div id="name-div">
@@ -44,6 +46,26 @@
         <div id="meet" style="display: none">
             <H4 id="meet-id">Meet ID: </H4>
             <span id="meet-id-status"></span>
+        </div>
+        <div class="floating-chat">
+            <i class="fa fa-comments" aria-hidden="true"></i>
+            <div class="chat">
+                <div class="header">
+            <span class="title">
+                Chat
+            </span>
+                    <button>
+                        <i class="fa fa-times" aria-hidden="true"></i>
+                    </button>
+
+                </div>
+                <ul id="messages" class="messages">
+                </ul>
+                <div class="footer">
+                    <div class="text-box" contenteditable="true" disabled="true"></div>
+                    <button id="sendMessage">send</button>
+                </div>
+            </div>
         </div>
     </body>
 </html>
