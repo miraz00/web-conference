@@ -586,6 +586,7 @@ function addVideo(stream, user = false, screen = false, pc) {
     video.setAttribute('autoplay', '');
     video.setAttribute('playsinline', '');
     video.srcObject = stream
+    video.controls = true
 
     div.appendChild(heading)
     div.appendChild(video);
@@ -614,6 +615,7 @@ webcamButton.onclick = () => {
         .then(async (stream) => {
             userStream = stream
             webcamVideo.srcObject = userStream
+            webcamVideo.controls = true
             for (const track of userStream.getTracks()) {
                 for (const pc of remoteNewPeers) {
                     pc.addTrack(track, userStream);
@@ -658,12 +660,14 @@ screenShareButton.onclick = () => {
 
 callButton.onclick = async () => {
     hangupButton.disabled = false
+    enableSection()
     getDOC()
     await hostMeet()
 }
 
 answerButton.onclick = async () => {
     hangupButton.disabled = false;
+    enableSection()
     docId = callInput.value;
     answerDiv.style.display = "none"
     callButton.style.display = "none"
@@ -867,6 +871,9 @@ function sendFile() {
             sendData(remoteConnectedPeers[key].fileChannel)
         }
     }
+
+    abortButton.disabled = true;
+    fileInput.disabled = false;
 }
 
 function sendMetadata(sendChannel, file) {
@@ -1020,3 +1027,53 @@ function manageFile(pc) {
 
     fileChannel.onmessage = (event) => onReceiveMessageCallback(event, pc);
 }
+
+// chat and file enabler
+function enableSection() {
+    document.querySelector("#fileSection").style.display = "block"
+    document.querySelector("#chatSection").style.display = "flex"
+    document.querySelector("#recordSection").style.display = "block"
+}
+
+//-------screen recording-----------
+
+const startButton = document.getElementById('startRecording');
+const stopButton = document.getElementById('stopRecording');
+const recordedVideo = document.getElementById('recordedVideo');
+
+let mediaRecorder;
+let recordedChunks = [];
+
+startButton.addEventListener('click', async () => {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true
+    });
+
+    mediaRecorder = new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = function(event) {
+        if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+        }
+    };
+
+    mediaRecorder.onstop = function() {
+        const blob = new Blob(recordedChunks, {
+            type: 'video/webm'
+        });
+        recordedChunks = [];
+        const url = URL.createObjectURL(blob);
+        recordedVideo.src = url;
+    };
+
+    mediaRecorder.start();
+    startButton.disabled = true;
+    stopButton.disabled = false;
+});
+
+stopButton.addEventListener('click', () => {
+    mediaRecorder.stop();
+    document.querySelector("#recordedVideo").style.display="inline"
+    startButton.disabled = false;
+    stopButton.disabled = true;
+});
